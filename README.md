@@ -1,0 +1,1 @@
+This executable is a thin layer applied to a web server that returns CSV for a single data item at a time.  This appliance is a drop-in replacement for that server that allows multiple data items to be requested at a time and combines those into a single CSV.  There is no current method for interpolation based upon a key field.
