@@ -18,25 +18,31 @@ import (
 
 var querySplitter querysplit.QuerySplitter
 
-func telemetryHandler(w http.ResponseWriter, req *http.Request) {
+func queryHandler(w http.ResponseWriter, req *http.Request) {
+
   queries, fields := querySplitter.Split(req.URL.RawQuery)
 
-  tarray := []string{"time"}
+  fmt.Printf("Identified fields in query: %v len %v\n", fields, len(fields))
+  fmt.Printf("Identified queries in query: %v\n", queries)
+
+  tarray := []string{config.IndexField}
   for i := range fields {
-    fields = append(tarray, fields[i])
+    tarray = append(tarray, fields[i])
   }
 
-  m := csv.NewCsvMatrix(fields)
+  m := csv.NewCsvMatrix(tarray)
 
   var chans []chan string 
-  for i := range chans {
-    chans[i] = make(chan string)
+  for i := 0; i<len(queries); i++ {
+    chans = append(chans, make(chan string))
   }
 
   for i:= range chans {
     go func(c chan string, q string, ival int64) {
       for {
         time.Sleep(time.Duration(rand.Int63n(ival)) * time.Second)
+
+        fmt.Printf("Issuing query: %v\n", q)
         resp, err := http.Get(q)
         if err == nil {
           defer resp.Body.Close()
@@ -48,11 +54,13 @@ func telemetryHandler(w http.ResponseWriter, req *http.Request) {
           }
         } 
       }
-    } (chans[i], queries[i], int64(len(queries)/2))
+    } (chans[i], queries[i], int64(len(queries)/2 + 1))
   }
 
   for i:=range chans {
+
     s := <-chans[i]
+
     m.AppendCsv(s)
   }
   b := bytes.NewBufferString(m.DumpCsv()) 
@@ -67,6 +75,7 @@ type Config struct {
   Handler string
   Splitkey string
   Port     int
+  IndexField string
   OtherKeys []string
 } 
 
@@ -95,8 +104,9 @@ func main() {
 
   fmt.Printf("Executing http-csv metaserver with config %v\n", config)
 
-  querySplitter = querysplit.NewQuerySplitter(config.Url, config.Splitkey, config.OtherKeys)
+  querySplitter = querysplit.NewQuerySplitter(fmt.Sprintf("%s/%s?", config.Url, config.Handler), config.Splitkey, config.OtherKeys)
 
-  http.HandleFunc(config.Handler, telemetryHandler)
-  log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", config.Port), nil))
+  ps := fmt.Sprintf(":%d", config.Port)
+  http.HandleFunc(config.Handler, queryHandler)
+  log.Fatal(http.ListenAndServe(ps, nil))
 }
